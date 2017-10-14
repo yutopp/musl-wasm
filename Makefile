@@ -17,8 +17,33 @@ includedir = $(prefix)/include
 libdir = $(prefix)/lib
 syslibdir = /lib
 
-SRC_DIRS = $(addprefix $(srcdir)/,src/* crt ldso)
-BASE_GLOBS = $(addsuffix /*.c,$(SRC_DIRS))
+## USER DEFINED (TODO: divide files)
+IGNORE_BASE_GLOBS = \
+	src/aio/* \
+	src/conf/* \
+	src/dirent/* \
+	src/env/* \
+	src/fcntl/* \
+	src/fenv/* \
+	src/ldso/* \
+	src/linux/* \
+	src/mq/* \
+	src/network/* \
+	src/passwd/* \
+	src/process/* \
+	src/signal/* \
+	src/termios/* \
+	src/thread/* \
+
+BITCODE_LIBS = lib/libc.bc
+
+ARCH=wasm32 # force set arch...
+##
+
+SRC_DIRS = $(addprefix $(srcdir)/, src/* crt)
+IGNORE_BASE_GLOBS := $(addprefix $(srcdir)/, $(IGNORE_BASE_GLOBS))
+BASE_GLOBS = $(wildcard $(addsuffix /*.c, $(SRC_DIRS)))
+BASE_GLOBS := $(filter-out $(wildcard $(IGNORE_BASE_GLOBS)), $(BASE_GLOBS))
 ARCH_GLOBS = $(addsuffix /$(ARCH)/*.[csS],$(SRC_DIRS))
 BASE_SRCS = $(sort $(wildcard $(BASE_GLOBS)))
 ARCH_SRCS = $(sort $(wildcard $(ARCH_GLOBS)))
@@ -43,7 +68,7 @@ LIBCC = -lgcc
 CPPFLAGS =
 CFLAGS =
 CFLAGS_AUTO = -Os -pipe
-CFLAGS_C99FSE = -std=c99 -ffreestanding -nostdinc 
+CFLAGS_C99FSE = -std=c99 -ffreestanding -nostdinc
 
 CFLAGS_ALL = $(CFLAGS_C99FSE)
 CFLAGS_ALL += -D_XOPEN_SOURCE=700 -I$(srcdir)/arch/$(ARCH) -I$(srcdir)/arch/generic -Iobj/src/internal -I$(srcdir)/src/internal -Iobj/include -I$(srcdir)/include
@@ -73,6 +98,14 @@ WRAPCC_GCC = gcc
 WRAPCC_CLANG = clang
 
 LDSO_PATHNAME = $(syslibdir)/ld-musl-$(ARCH)$(SUBARCH).so.1
+
+## USER DEFINED (TODO: divide files)
+LLFILES = $(LIBC_OBJS:.o=.ll)
+BCFILES = $(LLFILES:.ll=.bc)
+
+ALL_LIBS += $(BITCODE_LIBS)
+ALL_LIBS := $(filter-out $(STATIC_LIBS) $(SHARED_LIBS), $(ALL_LIBS))
+##
 
 -include config.mak
 
@@ -136,6 +169,10 @@ $(CRT_OBJS): CFLAGS_ALL += -DCRT
 
 $(LOBJS) $(LDSO_OBJS): CFLAGS_ALL += -fPIC
 
+## USER DEFINED (TODO: divide files)
+$(BCFILES): CFLAGS_ALL += -S --target=wasm32 -emit-llvm
+##
+
 CC_CMD = $(CC) $(CFLAGS_ALL) -c -o $@ $<
 
 # Choose invocation of assembler to be used
@@ -162,6 +199,22 @@ obj/%.lo: $(srcdir)/%.S
 
 obj/%.lo: $(srcdir)/%.c $(GENH) $(IMPH)
 	$(CC_CMD)
+
+## USER DEFINED ADDITIONAL RULES (TODO: divide files)
+obj/src/internal/version.ll: obj/src/internal/version.h
+
+obj/%.ll: $(srcdir)/%.S
+	$(CC_CMD)
+
+obj/%.ll: $(srcdir)/%.c $(GENH) $(IMPH)
+	$(CC_CMD)
+
+obj/%.bc: obj/%.ll
+	llvm-as -o $@ $<
+
+$(BITCODE_LIBS): $(BCFILES)
+	llvm-link -o $@ $(BCFILES)
+##
 
 lib/libc.so: $(LOBJS) $(LDSO_OBJS)
 	$(CC) $(CFLAGS_ALL) $(LDFLAGS_ALL) -nostdlib -shared \
