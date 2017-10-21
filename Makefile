@@ -34,6 +34,10 @@ IGNORE_BASE_GLOBS = \
 	src/signal/* \
 	src/termios/* \
 	src/thread/* \
+	src/exit/exit.c \
+	src/exit/abort.c
+# implemented by runtime
+# src/exit/exit.c, src/exit/abort.c
 
 BITCODE_LIBS = lib/libc.bc
 
